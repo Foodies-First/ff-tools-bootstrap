@@ -19,7 +19,7 @@ curl -fsSL https://raw.githubusercontent.com/Foodies-First/ff-tools-bootstrap/ma
 
 What it does, skipping anything already present: checks git · installs Node 22, the Google Cloud
 CLI and the GitHub CLI **for the current user only** (no system-wide changes) · signs you in to
-GitHub and Google (two browser approvals) · clones `ff-tools` into `~/code/ff-tools` and runs its
+Google (one browser approval; no GitHub account — pushing goes through the platform's GitHub App) · clones `ff-tools` into `~/code/ff-tools` and runs its
 setup. Safe to run again.
 
 Node downloads are verified against the official SHA-256 list. Google Cloud CLI and GitHub CLI

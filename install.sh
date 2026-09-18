@@ -8,7 +8,7 @@
 #   2. installs Node 22 for this user only (official build, checksum verified)
 #   3. installs the Google Cloud CLI for this user only (needed to read BigQuery)
 #   4. installs the GitHub CLI for this user only (needed to open pull requests)
-#   5. signs you in to GitHub and Google — each opens a browser page once
+#   5. signs you in to Google — one browser page (no GitHub account needed)
 #   6. clones the ff-tools repository into ~/code/ff-tools and runs its setup
 # Everything lands under ~/.ff-tools and ~/code/ff-tools; PATH lines go in ~/.zshrc.
 set -euo pipefail
@@ -107,23 +107,31 @@ else
   ok "gh installed for this user"
 fi
 
-# 5. Sign in -----------------------------------------------------------------
+# 5. Sign in — Google only. No GitHub account: pushing goes through the platform's
+#    GitHub App, unlocked by this same sign-in (see ff-tools/scripts/git-credential-ff.mjs).
+PLATFORM_URL="${FF_TOOLS_URL:-https://tools.foodies-first.com}"
 if [ "$SKIP_LOGIN" != "1" ]; then
-  step "GitHub sign-in (a browser page opens — use the GitHub account Edouard invited)"
-  gh auth status >/dev/null 2>&1 || gh auth login --hostname github.com --git-protocol https --web
-  gh auth setup-git >/dev/null
-  ok "signed in to GitHub as $(gh api user --jq .login)"
-
-  step "Google sign-in (a browser page opens — use your @foodies-first.com account)"
-  [ -f "$HOME/.config/gcloud/application_default_credentials.json" ] || gcloud auth application-default login --quiet
-  ok "Google credentials stored (used to read BigQuery and fetch the dev AI key)"
+  step "Google sign-in (a browser page opens — pick your @foodies-first.com account)"
+  if ! gcloud auth print-identity-token >/dev/null 2>&1; then
+    gcloud auth login --update-adc --quiet
+  fi
+  ACCOUNT=$(gcloud config get-value account 2>/dev/null)
+  ok "signed in as $ACCOUNT (BigQuery, the dev AI key and GitHub access all use this)"
 fi
 
-# 6. Clone + setup -----------------------------------------------------------
+# 6. Clone + setup ------------------------------------------------------------
 step "FF Tools repository"
 if [ -d "$REPO_DIR/.git" ]; then ok "already cloned at $REPO_DIR"
 elif [ "$SKIP_LOGIN" = "1" ]; then note "skipping clone (FF_SKIP_LOGIN=1)"
-else gh repo clone "$REPO" "$REPO_DIR"; ok "cloned to $REPO_DIR"
+else
+  # First clone: fetch a one-hour token from the platform with the Google identity token.
+  IDT=$(gcloud auth print-identity-token)
+  TOKEN=$(curl -fsS -X POST -H "Authorization: Bearer $IDT" "$PLATFORM_URL/api/dev/github-token" | python3 -c "import json,sys; print(json.load(sys.stdin)['token'])") \
+    || { echo "FF Tools would not give this laptop GitHub access. Ask Edouard whether your Google account is on the allowed domain, and whether the GitHub App is set up." >&2; exit 1; }
+  git clone -q "https://x-access-token:${TOKEN}@github.com/$REPO.git" "$REPO_DIR"
+  unset TOKEN IDT
+  git -C "$REPO_DIR" remote set-url origin "https://github.com/$REPO.git"   # no token in the remote URL; the helper supplies it
+  ok "cloned to $REPO_DIR"
 fi
 if [ -d "$REPO_DIR" ]; then
   cd "$REPO_DIR"
