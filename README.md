@@ -27,4 +27,13 @@ come from their vendors' release channels. Review the scripts before running the
 
 Testing the installer itself without signing in or cloning: set `FF_SKIP_LOGIN=1`.
 
+**Starting over.** `uninstall.ps1` puts a Windows laptop back as it was — it removes the per-user
+tools, the PATH entries, the cached token and the `ff-tools` folder, and leaves Git, Claude Code and
+your Google sign-in alone. It stops if the folder holds work that was never sent to Edouard, unless
+you set `FF_FORCE=1`.
+
+```powershell
+irm https://raw.githubusercontent.com/Foodies-First/ff-tools-bootstrap/main/uninstall.ps1 | iex
+```
+
 Maintainer: Edouard Schneiders. Colleagues: see `ONBOARDING.md` in `ff-tools`.
