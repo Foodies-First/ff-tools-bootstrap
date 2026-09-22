@@ -17,7 +17,7 @@ irm https://raw.githubusercontent.com/Foodies-First/ff-tools-bootstrap/main/inst
 curl -fsSL https://raw.githubusercontent.com/Foodies-First/ff-tools-bootstrap/main/install.sh | bash
 ```
 
-What it does, skipping anything already present: checks git · installs Node 22, the Google Cloud
+What it does, skipping anything already present: installs Git (Windows, portable build) · installs Node 22, the Google Cloud
 CLI and the GitHub CLI **for the current user only** (no system-wide changes) · signs you in to
 Google (one browser approval; no GitHub account — pushing goes through the platform's GitHub App) · clones `ff-tools` into `~/code/ff-tools` and runs its
 setup. Safe to run again.

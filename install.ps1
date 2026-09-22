@@ -3,13 +3,13 @@
 #   irm https://raw.githubusercontent.com/Foodies-First/ff-tools-bootstrap/main/install.ps1 | iex
 #
 # What it does, in order, skipping anything already present:
-#   1. checks Git for Windows (Claude Code needs it too — install it if missing)
+#   1. installs Git for Windows if missing (the portable build — no admin rights)
 #   2. installs Node 22 for this user only (official build, checksum verified)
 #   3. installs the Google Cloud CLI for this user only (needed to read BigQuery)
 #   4. installs the GitHub CLI for this user only (needed to open pull requests)
 #   5. signs you in to Google — one browser page (no GitHub account needed)
 #   6. clones the ff-tools repository into ~\code\ff-tools and runs its setup
-# Not installed here: Claude Code itself (you already have it) and Git for Windows.
+# Not installed here: Claude Code itself — you already have it.
 # Nothing here needs administrator rights and nothing is installed system-wide.
 # Everything lands under %LOCALAPPDATA%\ff-tools and ~\code\ff-tools.
 
@@ -41,15 +41,27 @@ function AddToUserPath($dir) {
 New-Item -ItemType Directory -Force -Path $Base, $CodeDir | Out-Null
 Write-Host "FF Tools installer · $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -ForegroundColor White
 
-# 1. Git ------------------------------------------------------------------
+# 1. Git ---------------------------------------------------------------------
+# Not a prerequisite: Git for Windows publishes a *portable* build that extracts
+# without administrator rights, so we install it like everything else here.
 Step "Git"
 if (Has git) { Ok (git --version) }
 else {
-  Write-Host "  Git for Windows is missing. Claude Code needs it as well." -ForegroundColor Yellow
-  Write-Host "  Install it from https://git-scm.com/download/win (defaults are fine)." -ForegroundColor Yellow
-  Write-Host "  Then CLOSE this PowerShell window, open a new one, and run the installer again —" -ForegroundColor Yellow
-  Write-Host "  a window opened before the install still cannot see Git." -ForegroundColor Yellow
-  exit 1
+  Note "installing Git for this user (no administrator rights needed)"
+  $rel = Invoke-RestMethod "https://api.github.com/repos/git-for-windows/git/releases/latest"
+  $asset = $rel.assets | Where-Object { $_.name -like "PortableGit-*-64-bit.7z.exe" } | Select-Object -First 1
+  if (-not $asset) { throw "Could not find a portable Git build to download. Install Git from https://git-scm.com/download/win and run this again." }
+  $sfx = Join-Path $env:TEMP $asset.name
+  Invoke-WebRequest $asset.browser_download_url -OutFile $sfx
+  $dest = Join-Path $Base "git"
+  if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+  # 7-Zip self-extractor: -o target, -y accept. Silent.
+  & $sfx -o"$dest" -y | Out-Null
+  AddToUserPath (Join-Path $dest "cmd")
+  Remove-Item $sfx -Force -ErrorAction SilentlyContinue
+  if (-not (Has git)) { throw "Git did not install correctly. Install it from https://git-scm.com/download/win, open a new PowerShell window, and run this again." }
+  Ok "$(git --version) installed for this user"
+  Note "Claude Code needs Git too — restart Claude once this finishes so it sees it."
 }
 
 # 2. Node 22 ----------------------------------------------------------------
