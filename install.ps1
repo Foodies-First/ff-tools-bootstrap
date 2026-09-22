@@ -9,10 +9,18 @@
 #   4. installs the GitHub CLI for this user only (needed to open pull requests)
 #   5. signs you in to Google — one browser page (no GitHub account needed)
 #   6. clones the ff-tools repository into ~\code\ff-tools and runs its setup
+# Not installed here: Claude Code itself (you already have it) and Git for Windows.
 # Nothing here needs administrator rights and nothing is installed system-wide.
 # Everything lands under %LOCALAPPDATA%\ff-tools and ~\code\ff-tools.
 
 $ErrorActionPreference = "Stop"
+# Windows PowerShell 5.1 renders a progress bar for every Invoke-WebRequest and it
+# throttles downloads badly — 10-50x. Off before anything is fetched.
+$ProgressPreference = "SilentlyContinue"
+# A shell started before Git (or anything else) was installed still has the old PATH,
+# which is how "install Git, then re-run" ends with "Git is missing". Re-read it.
+$env:Path = ([Environment]::GetEnvironmentVariable("Path", "Machine"), [Environment]::GetEnvironmentVariable("Path", "User") | Where-Object { $_ }) -join ";"
+
 $Base = Join-Path $env:LOCALAPPDATA "ff-tools"
 $CodeDir = Join-Path $HOME "code"
 $RepoDir = Join-Path $CodeDir "ff-tools"
@@ -38,7 +46,9 @@ Step "Git"
 if (Has git) { Ok (git --version) }
 else {
   Write-Host "  Git for Windows is missing. Claude Code needs it as well." -ForegroundColor Yellow
-  Write-Host "  Install it from https://git-scm.com/download/win (defaults are fine), then run this installer again." -ForegroundColor Yellow
+  Write-Host "  Install it from https://git-scm.com/download/win (defaults are fine)." -ForegroundColor Yellow
+  Write-Host "  Then CLOSE this PowerShell window, open a new one, and run the installer again —" -ForegroundColor Yellow
+  Write-Host "  a window opened before the install still cannot see Git." -ForegroundColor Yellow
   exit 1
 }
 
@@ -101,9 +111,18 @@ else {
 $PlatformUrl = if ($env:FF_TOOLS_URL) { $env:FF_TOOLS_URL.TrimEnd("/") } else { "https://tools.foodies-first.com" }
 if (-not $SkipLogin) {
   Step "Google sign-in (a browser page opens — pick your @foodies-first.com account)"
-  gcloud auth print-identity-token 2>$null | Out-Null
-  if ($LASTEXITCODE -ne 0) { gcloud auth login --update-adc --quiet }
-  $Account = (gcloud config get-value account 2>$null)
+  # Probe without letting a non-zero exit abort the run, then sign in *with* prompts.
+  $ErrorActionPreference = "Continue"
+  gcloud auth print-identity-token *> $null
+  $signedIn = ($LASTEXITCODE -eq 0)
+  $Account = (gcloud config get-value account 2> $null)
+  $ErrorActionPreference = "Stop"
+  if (-not $signedIn) {
+    gcloud auth login --update-adc
+    $ErrorActionPreference = "Continue"
+    $Account = (gcloud config get-value account 2> $null)
+    $ErrorActionPreference = "Stop"
+  }
   Ok "signed in as $Account (BigQuery, the dev AI key and GitHub access all use this)"
 }
 
