@@ -17,6 +17,10 @@ $ErrorActionPreference = "Stop"
 # Windows PowerShell 5.1 renders a progress bar for every Invoke-WebRequest and it
 # throttles downloads badly — 10-50x. Off before anything is fetched.
 $ProgressPreference = "SilentlyContinue"
+# Windows blocks .ps1 files by default, and `gcloud` resolves to gcloud.ps1. Lift it
+# for this process only — no admin, nothing persisted. Managed machines may refuse,
+# which is why every gcloud call below goes through gcloud.cmd instead.
+try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction Stop } catch { }
 # A shell started before Git (or anything else) was installed still has the old PATH,
 # which is how "install Git, then re-run" ends with "Git is missing". Re-read it.
 $env:Path = ([Environment]::GetEnvironmentVariable("Path", "Machine"), [Environment]::GetEnvironmentVariable("Path", "User") | Where-Object { $_ }) -join ";"
@@ -102,6 +106,13 @@ else {
   AddToUserPath (Join-Path $sdk "bin")
   Ok "gcloud installed for this user"
 }
+# Always the .cmd shim: `gcloud` on its own is gcloud.ps1, which Windows refuses to
+# run under the default execution policy.
+$Gcloud = @(
+  (Join-Path $Base "google-cloud-sdk\bin\gcloud.cmd"),
+  (Get-Command gcloud.cmd -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)
+) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+if (-not $Gcloud) { throw "Could not find gcloud.cmd after installing the Google Cloud CLI. Send Edouard the output above." }
 
 # 4. GitHub CLI -------------------------------------------------------------
 Step "GitHub CLI"
@@ -123,17 +134,18 @@ else {
 $PlatformUrl = if ($env:FF_TOOLS_URL) { $env:FF_TOOLS_URL.TrimEnd("/") } else { "https://tools.foodies-first.com" }
 if (-not $SkipLogin) {
   Step "Google sign-in (a browser page opens — pick your @foodies-first.com account)"
-  # Probe without letting a non-zero exit abort the run, then sign in *with* prompts.
   $ErrorActionPreference = "Continue"
-  gcloud auth print-identity-token *> $null
+  & $Gcloud auth print-identity-token *> $null
   $signedIn = ($LASTEXITCODE -eq 0)
-  $Account = (gcloud config get-value account 2> $null)
   $ErrorActionPreference = "Stop"
-  if (-not $signedIn) {
-    gcloud auth login --update-adc
-    $ErrorActionPreference = "Continue"
-    $Account = (gcloud config get-value account 2> $null)
-    $ErrorActionPreference = "Stop"
+  if (-not $signedIn) { & $Gcloud auth login --update-adc }
+  $ErrorActionPreference = "Continue"
+  $Account = (& $Gcloud config get-value account 2> $null)
+  & $Gcloud auth print-identity-token *> $null
+  $signedIn = ($LASTEXITCODE -eq 0)
+  $ErrorActionPreference = "Stop"
+  if (-not $signedIn -or -not $Account) {
+    throw "The Google sign-in did not complete. Run the installer again and pick your @foodies-first.com account in the browser."
   }
   Ok "signed in as $Account (BigQuery, the dev AI key and GitHub access all use this)"
 }
@@ -144,7 +156,7 @@ if (Test-Path (Join-Path $RepoDir ".git")) { Ok "already cloned at $RepoDir" }
 elseif ($SkipLogin) { Note "skipping clone (FF_SKIP_LOGIN=1)" }
 else {
   # First clone: fetch a one-hour token from the platform with the Google identity token.
-  $Idt = (gcloud auth print-identity-token)
+  $Idt = (& $Gcloud auth print-identity-token)
   try {
     $Resp = Invoke-RestMethod -Method Post -Uri "$PlatformUrl/api/dev/github-token" -Headers @{ Authorization = "Bearer $Idt" }
   } catch {
