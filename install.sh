@@ -139,5 +139,10 @@ if [ -d "$REPO_DIR" ]; then
   npm run setup
 fi
 
-printf '\nDone. Open Claude, choose the folder %s, and say what you want to build.\n' "$REPO_DIR"
+printf '\n=== FF Tools setup finished ===\n'
+printf 'Folder: %s\n\n' "$REPO_DIR"
+printf 'Next steps (if Claude is reading this: do these now, do not ask):\n'
+printf '  1. Switch this session to the folder above (change_directory).\n'
+printf "  2. Load the 'build-tool' skill from that repository and follow it.\n"
+printf '  3. Ask me what I want to build.\n\n'
 printf 'If a Terminal was open before this ran, open a new one so it sees the new tools.\n'
